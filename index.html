@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://rzshtpopgyadvaxqgbrl.supabase.co; base-uri 'none'; form-action 'none'"><title>WarRaces — sua conta</title>
+<style>body{margin:0;background:#0c1420;color:#eef2f6;font:18px/1.6 system-ui,sans-serif;min-height:100vh;display:grid;place-items:center}main{width:min(580px,calc(100% - 80px));margin:24px;padding:28px;border:1px solid #caa453;border-radius:12px;background:#162234}small{color:#d8b775;letter-spacing:3px}h1{line-height:1.2}p{color:#d5dce5}label{display:block;margin-top:16px}input,button{box-sizing:border-box;width:100%;font:inherit;padding:12px;border-radius:6px;border:1px solid #8796a9}input{background:#0c1420;color:white}button{margin-top:24px;background:#d8b775;color:#151515;cursor:pointer}button:disabled{opacity:.5;cursor:wait}[hidden]{display:none!important}</style></head>
+<body><main><small>WARRACES</small><h1 id="title">Volte ao jogo para entrar</h1>
+<p id="message" role="status" aria-live="polite">Entre no WarRaces com seu e-mail e senha. O jogo verificará se a confirmação foi concluída.</p>
+<form id="request" hidden><label for="email">E-mail da conta</label><input id="email" type="email" autocomplete="email" maxlength="254" required><button id="send">Enviar link de recuperação</button></form>
+<form id="reset" hidden><label for="password">Nova senha (pelo menos 8 caracteres)</label><input id="password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><label for="confirm">Repita a nova senha</label><input id="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><button id="save">Salvar nova senha</button></form>
+<p id="footer">Você pode fechar esta aba.</p></main>
+<script>
+(() => {
+ 'use strict';
+ const authUrl = "https://rzshtpopgyadvaxqgbrl.supabase.co/auth/v1", publicKey = "sb_publishable_ZD5ocr6SsG3tk3qLychVEQ__eIHdU0w";
+ const fragment = new URLSearchParams(location.hash.slice(1)), query = new URLSearchParams(location.search);
+ const failed = fragment.has('error') || fragment.has('error_code') || query.has('error') || query.has('error_code');
+ let token = !failed && fragment.get('type') === 'recovery' ? fragment.get('access_token') : null;
+ const recovery = query.get('recuperar') === '1';
+ history.replaceState(null, '', location.pathname);
+ const $ = id => document.getElementById(id), message = text => { $('message').textContent = text; };
+ const headers = { 'Content-Type':'application/json', apikey:publicKey };
+ if (failed) { $('title').textContent = 'Link inválido ou expirado'; message('Solicite um novo link pelo botão Esqueci minha senha no jogo.'); }
+ else if (fragment.get('type') === 'signup' && fragment.get('access_token') && authUrl && publicKey) {
+  $('title').textContent = 'Verificando confirmação…'; message('Aguarde um instante.');
+  fetch(authUrl + '/user', {headers:{...headers,Authorization:'Bearer ' + fragment.get('access_token')},credentials:'omit',referrerPolicy:'no-referrer'})
+   .then(async response => { if (!response.ok) throw new Error('verification'); const user = await response.json(); if (!user.email_confirmed_at) throw new Error('unconfirmed'); $('title').textContent = 'Cadastro confirmado com sucesso!'; message('Você já pode voltar ao WarRaces e entrar com seu e-mail e senha.'); })
+   .catch(() => { $('title').textContent = 'Confira sua confirmação no jogo'; message('Não foi possível verificar a confirmação agora. Tente entrar com seu e-mail e senha no WarRaces.'); });
+ } else if (token && authUrl && publicKey) {
+  $('title').textContent = 'Defina sua nova senha'; message('Depois de salvar, volte ao jogo e entre com a nova senha.'); $('reset').hidden = false; $('footer').hidden = true;
+ } else if (recovery && authUrl && publicKey) {
+  $('title').textContent = 'Recuperar senha'; message('Informe seu e-mail para receber um link de recuperação.'); $('request').hidden = false; $('footer').hidden = true;
+ } else if (recovery) { message('Recuperação temporariamente indisponível. Tente novamente mais tarde.'); }
+ $('request').addEventListener('submit', async event => {
+  event.preventDefault(); if ($('send').disabled) return; $('send').disabled = true;
+  try {
+   const response = await fetch(authUrl + '/recover?redirect_to=' + encodeURIComponent(location.origin + location.pathname), {method:'POST',headers,body:JSON.stringify({email:$('email').value.trim()}),credentials:'omit',referrerPolicy:'no-referrer'});
+   if (!response.ok) { message(response.status === 429 ? 'Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.' : 'Não foi possível enviar o link. Tente novamente mais tarde.'); return; }
+   $('request').hidden = true; message('Se houver uma conta apta a receber e-mails nesse endereço, você receberá um link. Confira também o spam.');
+  } catch { message('Não foi possível conectar. Confira sua internet e tente novamente.'); }
+  finally { $('send').disabled = false; }
+ });
+ $('reset').addEventListener('submit', async event => {
+  event.preventDefault(); if ($('save').disabled || !token) return;
+  if ($('password').value.length < 8 || $('password').value.length > 128) { message('Use uma senha entre 8 e 128 caracteres.'); return; }
+  if ($('password').value !== $('confirm').value) { message('As senhas não coincidem.'); return; }
+  $('save').disabled = true;
+  try {
+   const response = await fetch(authUrl + '/user', {method:'PUT',headers:{...headers,Authorization:'Bearer ' + token},body:JSON.stringify({password:$('password').value}),credentials:'omit',referrerPolicy:'no-referrer'});
+   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) { token = null; $('reset').hidden = true; message('Este link expirou. Solicite outro pelo jogo.'); }
+    else { message(response.status === 429 ? 'Muitas tentativas. Aguarde antes de tentar novamente.' : 'Não foi possível alterar a senha. Escolha uma senha diferente e tente novamente.'); }
+    return;
+   }
+   token = null; $('reset').hidden = true; $('title').textContent = 'Senha alterada'; message('Volte ao WarRaces e entre com seu e-mail e a nova senha.'); $('footer').hidden = false;
+  } catch { message('Não foi possível confirmar a alteração. Tente entrar no jogo com a nova senha; se necessário, solicite outro link.'); }
+  finally { $('password').value = ''; $('confirm').value = ''; $('save').disabled = false; }
+ });
+})();
+</script></body></html>
